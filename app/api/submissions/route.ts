@@ -35,7 +35,12 @@ export async function POST(request: NextRequest) {
         testResults: [],
       }
     } else {
-      evaluation = await executeCode(code, language, room.question.testCases as any[]).catch(() => ({
+      // Ensure testCases is properly parsed from JSON if needed
+      const testCases = Array.isArray(room.question.testCases) 
+        ? room.question.testCases 
+        : JSON.parse(room.question.testCases as string)
+      
+      evaluation = await executeCode(code, language, testCases).catch(() => ({
         isCorrect: false,
         feedback: "Code execution failed. Please try again.",
         executionTime: 0,
@@ -145,7 +150,14 @@ export async function POST(request: NextRequest) {
       message: "Submission evaluated successfully",
       submission,
     })
-  } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }catch (error) {
+    console.error("Error executing code:", error);
+    return NextResponse.json(
+      { 
+        error: "Code execution failed",
+        details: error instanceof Error ? error.message : "Unknown error"
+      }, 
+      { status: 500 }
+    );
   }
 }

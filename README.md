@@ -1,161 +1,124 @@
-# Multiplayer AI Coding Arena 🏆
+# Coding Platform
 
-A production-ready, real-time coding competition platform. Compete with friends or strangers in live AI-generated coding challenges, with instant feedback and a simple, human-friendly interface.
+A competitive coding platform with real-time multiplayer games and practice problems.
 
----
+## Features
 
-## 🚀 Features 
+- 🎮 **Real-time multiplayer coding games**
+- 📝 **Practice problems with multiple languages**
+- 🏆 **Leaderboards and scoring**
+- 👥 **Room-based gameplay**
+- 📊 **Code execution with Judge0 API**
 
-- **Real-time Multiplayer Rooms**: Join, create, or enter rooms for live coding battles
-- **AI-Generated Problems**: Every game features a unique, automatically generated coding challenge (Google Gemini)
-- **Instant Feedback**: Submissions are evaluated by AI for correctness, efficiency, and style
-- **Game Timer**: Each game has a countdown; the first correct solution wins, or the game ends when time runs out
-- **Simple Points System**: Winner gets +5, all others get -5
-- **Minimalist UI**: No unnecessary badges, win rates, or AI points—just code, compete, and win
-- **Private & Public Rooms**: Compete with friends or open your room to the world
-- **Mobile Friendly**: Works great on all devices
-- **Production Deployed**: Runs on Vercel (Next.js) and a dedicated Socket.IO server
-- **About Page**: See `/about` for a project overview
+## Setup
 
----
+### 1. Environment Variables
 
-## 🏗️ Tech Stack & Architecture
+Create a `.env.local` file:
 
-- **Frontend**: Next.js 15, React 19, TypeScript
-- **Backend**: Next.js API Routes, Prisma ORM
-- **Database**: PostgreSQL
-- **Real-time**: Socket.IO (standalone server)
-- **AI**: Google Gemini 2.0 Flash
-- **Authentication**: Clerk
-- **Styling**: Tailwind CSS, shadcn/ui
-- **Code Editor**: Monaco Editor
+```env
+# Judge0 API Configuration (Required)
+RAPIDAPI_KEY=your_rapidapi_key_here
 
----
+# Database Configuration
+DATABASE_URL="postgresql://username:password@localhost:5432/database_name"
 
-## 🏆 How It Works
-
-1. **Create or Join a Room**: Use a join code or browse your rooms
-2. **Start a Game**: Host selects difficulty and duration
-3. **AI Generates a Problem**: Gemini creates a unique challenge
-4. **Coding Phase**: All players code in real time
-5. **Submit Solution**: First correct submission ends the game, or the timer runs out
-6. **Scoring**: Winner gets +5 points, all others get -5
-7. **Results**: See your global rank instantly on the leaderboard page
-
----
-
-## 🎮 Game Rules & Points
-
-- **Winner**: First player to submit a correct solution
-- **Points**: Winner +5, all others -5
-- **Leaderboard**: Sorted by total points across all games
-- **No AI bonus points or win rate**: Simple, fair scoring
-- **Game ends automatically when time runs out**
-
----
-
-## 📦 Project Structure
-
-```
-multiplayer-ai-coding-arena/
-├── app/                  # Next.js App Router
-│   ├── api/              # API Routes
-│   ├── dashboard/        # User dashboard
-│   ├── leaderboard/      # Global leaderboard
-│   ├── rooms/            # Room management
-│   ├── about/            # About page
-│   └── sign-in/          # Auth pages
-├── components/           # UI components
-├── lib/                  # Utility libraries
-├── hooks/                # Custom React hooks
-├── prisma/               # Database schema
-├── socket-server.js      # Socket.IO server
-└── scripts/              # Setup scripts
+# Clerk Configuration
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
+CLERK_SECRET_KEY=your_clerk_secret_key
 ```
 
----
+### 2. Get RapidAPI Key (IMPORTANT!)
 
-## 🌐 Deployment & Setup
+**Step 1: Sign up for RapidAPI**
+1. Go to [RapidAPI](https://rapidapi.com)
+2. Create an account or sign in
 
-This project is fully deployed and production-ready. To run locally:
+**Step 2: Subscribe to Judge0 CE**
+1. Go to [Judge0 CE API](https://rapidapi.com/judge0-official/api/judge0-ce)
+2. Click "Subscribe to Test"
+3. Choose the free plan (100 requests/month)
+4. Complete the subscription
 
-### Prerequisites
-- Node.js 18+
-- PostgreSQL
-- Google Gemini API key
-- Clerk authentication keys
+**Step 3: Get your API Key**
+1. In your RapidAPI dashboard, go to "My Apps"
+2. Find your Judge0 CE subscription
+3. Copy the API key (starts with something like `7cc9136ademsh...`)
+4. Add it to your `.env.local` file
 
-### Environment Variables
-```
-DATABASE_URL=postgresql://...
-GEMINI_API_KEY=your-gemini-api-key
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your-clerk-key
-CLERK_SECRET_KEY=your-clerk-secret
-```
+**Step 4: Verify Setup**
+- Make sure the API key is in your `.env.local` file
+- Restart your development server
+- Try submitting code again
 
-### Installation
+### 3. Install Dependencies
+
 ```bash
-git clone <repository-url>
-cd multiplayer-ai-coding-arena
-npm install --legacy-peer-deps
+npm install
+```
+
+### 4. Database Setup
+
+```bash
 npx prisma generate
 npx prisma db push
-npm run dev          # Next.js app (port 3000)
-node socket-server.js # Socket.IO server (port 3003)
 ```
 
----
+### 5. Run Development Server
 
-## 👤 User Guide
+```bash
+npm run dev
+```
 
-- **Sign Up / Log In**: Secure authentication with Clerk
-- **Create Room**: Set max players, privacy, and get a join code
-- **Join Room**: Enter a join code or browse your rooms
-- **Start Game**: Host selects difficulty and duration
-- **Solve Challenge**: Use the code editor, submit when ready
-- **See Results**: Winner and points are shown instantly
-- **Track Progress**: Check your global rank on the leaderboard
-- **About**: See `/about` for a project overview
+## Troubleshooting
 
----
+### "Judge0 API error: 403"
+This means your RapidAPI key is not working. To fix:
 
-## 🛠️ Admin Guide
+1. **Check your API key**: Make sure it's copied correctly from RapidAPI
+2. **Verify subscription**: Ensure you're subscribed to Judge0 CE API
+3. **Check environment**: Make sure `RAPIDAPI_KEY` is in your `.env.local` file
+4. **Restart server**: Stop and restart your development server
 
-- **Room Management**: Delete or manage your created rooms
-- **Game Management**: Games end automatically on correct solution or timer
-- **Database**: All data is managed via Prisma and PostgreSQL
+### "Authentication failed"
+- Make sure you've subscribed to the Judge0 CE API on RapidAPI
+- Check that your API key is valid and active
+- Verify the key is properly set in your environment variables
 
----
+## Supported Languages
 
-## ✨ Unique Features
+- **JavaScript** (Node.js 18.15.0)
+- **Python** (3.8.1)
+- **C++** (GCC 9.2.0)
+- **Java** (OpenJDK 13.0.1)
+- **C** (GCC 9.2.0)
 
-- **AI-Generated Problems**: No two games are the same
-- **Simple, Human UI**: No unnecessary badges, win rates, or AI points
-- **Instant Results**: Game ends as soon as a correct solution is submitted or timer ends
-- **Minimalist Leaderboard**: Only total points, games played, and games won
-- **Mobile Friendly**: Works great on all devices
-- **About Page**: `/about` for a full project summary
+## Architecture
 
+- **Frontend**: Next.js 14 with TypeScript
+- **Backend**: Next.js API routes
+- **Database**: PostgreSQL with Prisma
+- **Code Execution**: Judge0 API
+- **Authentication**: Clerk
+- **Real-time**: Socket.IO
 
-## ❓ FAQ & Troubleshooting
+## Code Execution
 
-**Q: The leaderboard or results are slow to load.**
-A: The app now only fetches the top 10-20 records for speed. If you have a huge database, consider adding pagination.
+The platform uses **Judge0 CE** for reliable code execution:
 
-**Q: How do I reset all points?**
-A: Use Prisma Studio or a SQL command: `UPDATE "users" SET "total_score" = 0;`
+- ✅ **No SIGSEGV issues** (unlike Piston)
+- ✅ **Stable execution environment**
+- ✅ **Multiple language support**
+- ✅ **Proper error handling**
+- ✅ **Timeout and memory limits**
 
-**Q: Can I add more languages?**
-A: Yes! Update the code editor and AI prompt to support more languages.
+## Contributing
 
-**Q: How do I deploy?**
-A: This project is already deployed, but you can use Vercel for the Next.js app and any Node server for Socket.IO.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
+## License
 
-## 🙏 Credits
-
-- Google Gemini for AI challenge generation
-- Clerk for authentication
-- Prisma & PostgreSQL for database
-- Socket.IO for real-time features
-- shadcn/ui & Tailwind for UI
+MIT

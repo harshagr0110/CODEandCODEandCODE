@@ -9,23 +9,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { code, language, testCases } = await request.json()
+    const body = await request.json()
+    const { code, language, testCases } = body
 
-    if (!code || !language || !testCases) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    if (!code || typeof code !== 'string') {
+      return NextResponse.json({ error: "Code is required" }, { status: 400 })
     }
 
-    // Execute code using Piston
-    const result = await executeCode(code, language, testCases)
+    if (!language || typeof language !== 'string') {
+      return NextResponse.json({ error: "Language is required" }, { status: 400 })
+    }
 
+    if (!testCases || !Array.isArray(testCases) || testCases.length === 0) {
+      return NextResponse.json({ error: "At least one test case is required" }, { status: 400 })
+    }
+
+    // Clean and validate test cases
+    const cleanTestCases = testCases
+      .filter(testCase => testCase && testCase.expectedOutput)
+      .map(testCase => ({
+        input: testCase.input?.toString() || '',
+        expectedOutput: testCase.expectedOutput.toString(),
+        explanation: testCase.explanation?.toString()
+      }))
+
+    if (cleanTestCases.length === 0) {
+      return NextResponse.json({ error: "No valid test cases found" }, { status: 400 })
+    }
+
+    const result = await executeCode(code, language, cleanTestCases)
     return NextResponse.json(result)
   } catch (error) {
     console.error("Error executing code:", error)
     return NextResponse.json(
-      { 
-        error: "Code execution failed",
-        details: error instanceof Error ? error.message : "Unknown error"
-      }, 
+      { error: error instanceof Error ? error.message : "Code execution failed" }, 
       { status: 500 }
     )
   }

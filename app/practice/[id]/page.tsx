@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { MainLayout } from "@/components/main-layout"
 import { MonacoCodeEditor } from "@/components/monaco-code-editor"
-import { Clock, Play, CheckCircle, XCircle, ArrowLeft } from "lucide-react"
+import { Clock, Play, CheckCircle, XCircle, ArrowLeft, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 
 interface Question {
@@ -84,6 +84,13 @@ export default function PracticeQuestionPage({ params }: Props) {
 
     setSubmitting(true)
     try {
+      // Ensure test cases are properly formatted
+      const testCases = Array.isArray(question.testCases) 
+        ? question.testCases 
+        : typeof question.testCases === 'string' 
+          ? JSON.parse(question.testCases) 
+          : []
+
       const response = await fetch("/api/practice/submit", {
         method: "POST",
         headers: {
@@ -92,7 +99,11 @@ export default function PracticeQuestionPage({ params }: Props) {
         body: JSON.stringify({
           code: code.trim(),
           language,
-          testCases: question.testCases,
+          testCases: testCases.map((tc: any) => ({
+            input: tc.input || '',
+            expectedOutput: tc.expectedOutput || '',
+            explanation: tc.explanation
+          }))
         }),
       })
 
@@ -118,6 +129,28 @@ export default function PracticeQuestionPage({ params }: Props) {
       case 'hard': return 'bg-red-100 text-red-800'
       default: return 'bg-gray-100 text-gray-800'
     }
+  }
+
+  const isSigsegvError = (output: string) => {
+    return output.includes('SIGSEGV') || output.includes('Segmentation Fault')
+  }
+
+  const isCompilationError = (output: string) => {
+    return output.includes('Compilation Error') || 
+           output.includes('syntax error') ||
+           output.includes('compilation failed')
+  }
+
+  const isRuntimeError = (output: string) => {
+    return output.includes('Runtime Error') || 
+           output.includes('crashed') ||
+           output.includes('Time Limit Exceeded') ||
+           output.includes('Memory Limit Exceeded')
+  }
+
+  const isSystemError = (output: string) => {
+    return output.includes('Execution Error') || 
+           output.includes('Unknown error')
   }
 
   if (loading) {
@@ -198,13 +231,15 @@ export default function PracticeQuestionPage({ params }: Props) {
                       <div key={index} className="bg-gray-50 p-4 rounded-lg">
                         <h4 className="font-medium mb-2">Example {index + 1}:</h4>
                         <div className="space-y-2 text-sm">
-                          <div>
-                            <span className="font-medium">Input:</span>
-                            <pre className="bg-white p-2 rounded mt-1 overflow-x-auto">{testCase.input}</pre>
-                          </div>
+                          {testCase.input && (
+                            <div>
+                              <span className="font-medium">Input:</span>
+                              <pre className="bg-white p-2 rounded mt-1 overflow-x-auto whitespace-pre-wrap">{testCase.input}</pre>
+                            </div>
+                          )}
                           <div>
                             <span className="font-medium">Output:</span>
-                            <pre className="bg-white p-2 rounded mt-1 overflow-x-auto">{testCase.expectedOutput}</pre>
+                            <pre className="bg-white p-2 rounded mt-1 overflow-x-auto whitespace-pre-wrap">{testCase.expectedOutput}</pre>
                           </div>
                           {testCase.explanation && (
                             <div>
@@ -253,10 +288,57 @@ export default function PracticeQuestionPage({ params }: Props) {
                               <span className="font-medium">Test Case {index + 1}</span>
                             </div>
                             {!test.passed && (
-                              <div className="text-sm space-y-1">
-                                <div><span className="font-medium">Input:</span> {test.input}</div>
-                                <div><span className="font-medium">Expected:</span> {test.expectedOutput}</div>
-                                <div><span className="font-medium">Got:</span> {test.actualOutput}</div>
+                              <div className="space-y-2">
+                                {isSigsegvError(test.actualOutput) && (
+                                  <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
+                                    <div className="flex items-center mb-2">
+                                      <AlertTriangle className="h-4 w-4 text-yellow-600 mr-2" />
+                                      <span className="font-medium text-yellow-800">Common Issue</span>
+                                    </div>
+                                    <p className="text-sm text-yellow-700">
+                                      This error usually means your code tried to access memory it doesn't have permission to access. 
+                                      Check your array/vector bounds and make sure you're not accessing elements beyond the allocated size.
+                                    </p>
+                                  </div>
+                                )}
+                                {isCompilationError(test.actualOutput) && (
+                                  <div className="bg-red-50 border border-red-200 rounded p-3">
+                                    <div className="flex items-center mb-2">
+                                      <AlertTriangle className="h-4 w-4 text-red-600 mr-2" />
+                                      <span className="font-medium text-red-800">Compilation Error</span>
+                                    </div>
+                                    <p className="text-sm text-red-700">
+                                      Your code has a compilation error. Please check your syntax and fix it.
+                                    </p>
+                                  </div>
+                                )}
+                                {isRuntimeError(test.actualOutput) && (
+                                  <div className="bg-red-50 border border-red-200 rounded p-3">
+                                    <div className="flex items-center mb-2">
+                                      <AlertTriangle className="h-4 w-4 text-red-600 mr-2" />
+                                      <span className="font-medium text-red-800">Runtime Error</span>
+                                    </div>
+                                    <p className="text-sm text-red-700">
+                                      Your code crashed or encountered an error during execution.
+                                    </p>
+                                  </div>
+                                )}
+                                {isSystemError(test.actualOutput) && (
+                                  <div className="bg-orange-50 border border-orange-200 rounded p-3">
+                                    <div className="flex items-center mb-2">
+                                      <AlertTriangle className="h-4 w-4 text-orange-600 mr-2" />
+                                      <span className="font-medium text-orange-800">System Error</span>
+                                    </div>
+                                    <p className="text-sm text-orange-700">
+                                      There was an issue with the execution environment. Please try again.
+                                    </p>
+                                  </div>
+                                )}
+                                <div className="text-sm space-y-1">
+                                  {test.input && <div><span className="font-medium">Input:</span> <pre className="whitespace-pre-wrap">{test.input}</pre></div>}
+                                  <div><span className="font-medium">Expected:</span> <pre className="whitespace-pre-wrap">{test.expectedOutput}</pre></div>
+                                  <div><span className="font-medium">Got:</span> <pre className="whitespace-pre-wrap">{test.actualOutput}</pre></div>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -273,19 +355,30 @@ export default function PracticeQuestionPage({ params }: Props) {
               <Card>
                 <CardHeader>
                   <CardTitle>Your Solution</CardTitle>
-                  <div className="flex items-center space-x-4">
-                    <label className="text-sm font-medium">Language:</label>
-                    <select 
-                      value={language} 
-                      onChange={(e) => setLanguage(e.target.value)}
-                      className="border rounded px-3 py-1"
-                    >
-                      <option value="javascript">JavaScript</option>
-                      <option value="python">Python</option>
-                      <option value="cpp">C++</option>
-                      <option value="java">Java</option>
-                      <option value="c">C</option>
-                    </select>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <label className="text-sm font-medium">Language:</label>
+                      <select 
+                        value={language} 
+                        onChange={(e) => setLanguage(e.target.value)}
+                        className="border rounded px-3 py-2"
+                      >
+                        <option value="javascript">JavaScript</option>
+                        <option value="python">Python</option>
+                        <option value="cpp">C++</option>
+                        <option value="java">Java</option>
+                        <option value="c">C</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded p-3 mt-2">
+                    <div className="flex items-center mb-1">
+                      <AlertTriangle className="h-4 w-4 text-blue-600 mr-2" />
+                      <span className="font-medium text-blue-800">Code Execution</span>
+                    </div>
+                    <p className="text-sm text-blue-700">
+                      Your code will be executed using Judge0 API. Make sure to read input from stdin and output to stdout.
+                    </p>
                   </div>
                 </CardHeader>
                 <CardContent>

@@ -1,39 +1,28 @@
-import axios from 'axios'
+const JUDGE0_API_URL = 'https://judge0-ce.p.rapidapi.com'
 
-const PISTON_API_URL = 'https://emkc.org/api/v2/piston'
-
-interface PistonExecuteRequest {
-  language: string
-  version: string
-  files: Array<{
-    name?: string
-    content: string
-  }>
+interface Judge0Submission {
+  source_code: string
+  language_id: number
   stdin?: string
-  args?: string[]
-  compile_timeout?: number
-  run_timeout?: number
-  compile_memory_limit?: number
-  run_memory_limit?: number
+  cpu_time_limit?: number
+  memory_limit?: number
 }
 
-interface PistonExecuteResponse {
-  language: string
-  version: string
-  run: {
-    stdout: string
-    stderr: string
-    code: number
-    signal: string | null
-    output: string
+interface Judge0Response {
+  token: string
+}
+
+interface Judge0Result {
+  stdout: string | null
+  stderr: string | null
+  compile_output: string | null
+  message: string | null
+  status: {
+    id: number
+    description: string
   }
-  compile?: {
-    stdout: string
-    stderr: string
-    code: number
-    signal: string | null
-    output: string
-  }
+  time: string
+  memory: number
 }
 
 interface TestCase {
@@ -46,7 +35,6 @@ interface ExecutionResult {
   isCorrect: boolean
   feedback: string
   executionTime: number
-  memoryUsed: number
   testResults: Array<{
     input: string
     expectedOutput: string
@@ -55,12 +43,201 @@ interface ExecutionResult {
   }>
 }
 
-const LANGUAGE_MAP: Record<string, { language: string; version: string; extension: string }> = {
-  javascript: { language: 'javascript', version: '18.15.0', extension: 'js' },
-  python: { language: 'python', version: '3.10.0', extension: 'py' },
-  cpp: { language: 'cpp', version: '10.2.0', extension: 'cpp' },
-  java: { language: 'java', version: '15.0.2', extension: 'java' },
-  c: { language: 'c', version: '10.2.0', extension: 'c' },
+const LANGUAGE_MAP = {
+  javascript: { id: 63, name: 'JavaScript (Node.js 18.15.0)' },
+  python: { id: 71, name: 'Python (3.8.1)' },
+  cpp: { id: 54, name: 'C++ (GCC 9.2.0)' },
+  java: { id: 62, name: 'Java (OpenJDK 13.0.1)' },
+  c: { id: 50, name: 'C (GCC 9.2.0)' },
+}
+
+// Simple input sanitization
+function sanitizeInput(input: string): string {
+  return input
+    .trim()
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+}
+
+// Better C++ code wrapper
+function wrapCppCode(code: string): string {
+  const includes = `#include <iostream>
+#include <vector>
+#include <string>
+#include <algorithm>
+using namespace std;
+
+`
+  
+  if (!code.includes('#include')) {
+    code = includes + code
+  }
+  
+  if (!code.includes('int main()')) {
+    code = code.replace('main()', 'int main()')
+  }
+  
+  // Add error handling
+  if (code.includes('vector') && !code.includes('try')) {
+    code = code.replace('int main() {', `int main() {
+    try {
+`)
+    code = code.replace('return 0;', `        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    } catch (...) {
+        std::cerr << "Unknown error occurred" << std::endl;
+        return 1;
+    }`)
+  }
+  
+  return code
+}
+
+// Better error message handling
+function getErrorMessage(status: any, stderr: string | null, compileOutput: string | null): string {
+  if (status.id === 3) {
+    return 'Accepted' // Successful execution
+  }
+  if (status.id === 4) {
+    return 'Wrong Answer: Your output does not match the expected result.'
+  }
+  if (status.id === 5) {
+    return 'Time Limit Exceeded: Your code took too long to execute. Try optimizing your algorithm.'
+  }
+  if (status.id === 6) {
+    return 'Memory Limit Exceeded: Your code used too much memory. Try using more efficient data structures.'
+  }
+  if (status.id === 7) {
+    return 'Runtime Error: Your program crashed. Check for array bounds, null pointers, or infinite loops.'
+  }
+  if (status.id === 8) {
+    return 'Compilation Error: Your code has syntax errors. Please check your code and try again.'
+  }
+  
+  if (stderr) {
+    return stderr.trim()
+  }
+  if (compileOutput) {
+    return compileOutput.trim()
+  }
+  
+  return `Execution Error: ${status.description}`
+}
+
+// Submit code to Judge0
+async function submitCode(code: string, languageId: number, input: string): Promise<string> {
+  const apiKey = process.env.RAPIDAPI_KEY
+  console.log('🔑 API Key check:', {
+    hasKey: !!apiKey,
+    keyLength: apiKey?.length || 0,
+    keyStart: apiKey?.substring(0, 10) || 'none'
+  })
+  
+  if (!apiKey) {
+    throw new Error('RapidAPI key is not configured. Please add RAPIDAPI_KEY to your environment variables.')
+  }
+
+  const submission: Judge0Submission = {
+    source_code: code,
+    language_id: languageId,
+    stdin: input,
+    cpu_time_limit: 15,
+    memory_limit: 512000,
+  }
+
+  console.log('📤 Submitting to Judge0:', {
+    languageId,
+    codeLength: code.length,
+    inputLength: input.length,
+    hasApiKey: !!apiKey
+  })
+
+  const response = await fetch(`${JUDGE0_API_URL}/submissions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-RapidAPI-Key': apiKey,
+      'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
+    },
+    body: JSON.stringify(submission),
+  })
+
+  console.log('📥 Judge0 response:', {
+    status: response.status,
+    statusText: response.statusText,
+    ok: response.ok
+  })
+
+  if (response.status === 403) {
+    throw new Error('Authentication failed. Please check your RapidAPI key. Make sure you have subscribed to Judge0 CE API.')
+  }
+  
+  if (response.status === 401) {
+    throw new Error('Unauthorized. Please check your RapidAPI key configuration.')
+  }
+
+  if (!response.ok) {
+    throw new Error(`Judge0 API error: ${response.status} - ${response.statusText}`)
+  }
+
+  const data: Judge0Response = await response.json()
+  return data.token
+}
+
+// Get results from Judge0
+async function getResults(token: string): Promise<Judge0Result> {
+  const apiKey = process.env.RAPIDAPI_KEY
+  if (!apiKey) {
+    throw new Error('RapidAPI key is not configured. Please add RAPIDAPI_KEY to your environment variables.')
+  }
+
+  const response = await fetch(`${JUDGE0_API_URL}/submissions/${token}`, {
+    headers: {
+      'X-RapidAPI-Key': apiKey,
+      'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
+    },
+  })
+
+  if (response.status === 403) {
+    throw new Error('Authentication failed. Please check your RapidAPI key. Make sure you have subscribed to Judge0 CE API.')
+  }
+  
+  if (response.status === 401) {
+    throw new Error('Unauthorized. Please check your RapidAPI key configuration.')
+  }
+
+  if (!response.ok) {
+    throw new Error(`Judge0 API error: ${response.status} - ${response.statusText}`)
+  }
+
+  return await response.json()
+}
+
+// Wait for results with polling
+async function waitForResults(token: string, maxAttempts: 30): Promise<Judge0Result> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const result = await getResults(token)
+    
+    console.log(`🔄 Polling attempt ${i + 1}:`, {
+      statusId: result.status.id,
+      statusDescription: result.status.description,
+      stdout: result.stdout?.substring(0, 100),
+      stderr: result.stderr?.substring(0, 100),
+      compileOutput: result.compile_output?.substring(0, 100)
+    })
+    
+    // Status 1 = In Queue, Status 2 = Processing
+    // Status 3 = Accepted, Status 4+ = Various errors
+    if (result.status.id !== 1 && result.status.id !== 2) {
+      return result
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  }
+  
+  throw new Error('Execution timeout - Judge0 took too long to process the submission')
 }
 
 export async function executeCode(
@@ -68,9 +245,15 @@ export async function executeCode(
   language: string,
   testCases: TestCase[]
 ): Promise<ExecutionResult> {
-  const langConfig = LANGUAGE_MAP[language]
+  const langConfig = LANGUAGE_MAP[language as keyof typeof LANGUAGE_MAP]
   if (!langConfig) {
     throw new Error(`Unsupported language: ${language}`)
+  }
+
+  // Check if API key is configured
+  const apiKey = process.env.RAPIDAPI_KEY
+  if (!apiKey) {
+    throw new Error('RapidAPI key is not configured. Please add RAPIDAPI_KEY to your .env.local file and restart the server.')
   }
 
   const testResults = []
@@ -79,34 +262,68 @@ export async function executeCode(
 
   for (const testCase of testCases) {
     try {
-      const request: PistonExecuteRequest = {
-        language: langConfig.language,
-        version: langConfig.version,
-        files: [
-          {
-            name: `main.${langConfig.extension}`,
-            content: code,
-          },
-        ],
-        stdin: testCase.input,
-        run_timeout: 10000, // 10 seconds
-        run_memory_limit: 128000, // 128MB
-      }
-
       const startTime = Date.now()
-      const response = await axios.post<PistonExecuteResponse>(`${PISTON_API_URL}/execute`, request)
-      const endTime = Date.now()
       
+      // Sanitize input
+      const cleanInput = sanitizeInput(testCase.input || '')
+      
+      // Wrap C++ code
+      let executionCode = code
+      if (language === 'cpp') {
+        executionCode = wrapCppCode(code)
+      }
+      
+      // Submit code
+      const token = await submitCode(executionCode, langConfig.id, cleanInput)
+      
+      // Wait for results
+      const result = await waitForResults(token)
+      
+      const endTime = Date.now()
       totalExecutionTime += (endTime - startTime)
-
-      const actualOutput = response.data.run.stdout.trim()
+      
+      const actualOutput = result.stdout?.trim() || ''
       const expectedOutput = testCase.expectedOutput.trim()
-      const passed = actualOutput === expectedOutput
+      let passed = actualOutput === expectedOutput
+      let finalOutput = actualOutput
+
+      if (result.status.id === 3) { // Accepted
+        // Code executed successfully, check if output matches
+        if (actualOutput !== expectedOutput) {
+          allPassed = false
+          passed = false
+          finalOutput = `Wrong Answer: Expected "${expectedOutput}" but got "${actualOutput}"`
+        }
+      } else if (result.status.id === 4) { // Wrong Answer
+        allPassed = false
+        passed = false
+        finalOutput = `Wrong Answer: ${result.stderr || result.compile_output || 'Output does not match expected result'}`
+      } else if (result.status.id === 5) { // Time Limit Exceeded
+        allPassed = false
+        passed = false
+        finalOutput = 'Time Limit Exceeded: Your code took too long to execute.'
+      } else if (result.status.id === 6) { // Memory Limit Exceeded
+        allPassed = false
+        passed = false
+        finalOutput = 'Memory Limit Exceeded: Your code used too much memory.'
+      } else if (result.status.id === 7) { // Runtime Error
+        allPassed = false
+        passed = false
+        finalOutput = `Runtime Error: ${result.stderr || result.compile_output || 'Program crashed during execution'}`
+      } else if (result.status.id === 8) { // Compilation Error
+        allPassed = false
+        passed = false
+        finalOutput = `Compilation Error: ${result.compile_output || result.stderr || 'Code has syntax errors'}`
+      } else {
+        allPassed = false
+        passed = false
+        finalOutput = getErrorMessage(result.status, result.stderr, result.compile_output)
+      }
 
       testResults.push({
         input: testCase.input,
         expectedOutput: testCase.expectedOutput,
-        actualOutput,
+        actualOutput: finalOutput,
         passed,
       })
 
@@ -114,18 +331,13 @@ export async function executeCode(
         allPassed = false
       }
 
-      // If there's a runtime error, mark as failed
-      if (response.data.run.code !== 0) {
-        allPassed = false
-        testResults[testResults.length - 1].actualOutput = response.data.run.stderr || 'Runtime Error'
-      }
-
     } catch (error) {
       allPassed = false
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       testResults.push({
         input: testCase.input,
         expectedOutput: testCase.expectedOutput,
-        actualOutput: `Execution Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        actualOutput: `Execution Error: ${errorMessage}`,
         passed: false,
       })
     }
@@ -136,30 +348,31 @@ export async function executeCode(
 
   let feedback = ''
   if (allPassed) {
-    feedback = `All ${totalTests} test cases passed! Great job!`
+    feedback = `All ${totalTests} test cases passed!`
   } else {
-    feedback = `${passedTests}/${totalTests} test cases passed. `
-    const failedTests = testResults.filter(result => !result.passed)
-    if (failedTests.length > 0) {
-      feedback += `Failed test: Expected "${failedTests[0].expectedOutput}" but got "${failedTests[0].actualOutput}"`
-    }
+    feedback = `${passedTests}/${totalTests} test cases passed.`
   }
 
   return {
     isCorrect: allPassed,
     feedback,
-    executionTime: Math.round(totalExecutionTime / testCases.length), // Average execution time
-    memoryUsed: 0, // Piston doesn't provide memory usage info easily
+    executionTime: Math.round(totalExecutionTime / testCases.length),
     testResults,
   }
 }
 
 export async function getPistonLanguages() {
   try {
-    const response = await axios.get(`${PISTON_API_URL}/runtimes`)
-    return response.data
+    const response = await fetch(`${JUDGE0_API_URL}/languages`, {
+      headers: {
+        'X-RapidAPI-Key': process.env.RAPIDAPI_KEY || '',
+        'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
+      },
+    })
+    if (!response.ok) return []
+    return await response.json()
   } catch (error) {
-    console.error('Error fetching Piston languages:', error)
+    console.error('Error fetching Judge0 languages:', error)
     return []
   }
 }
