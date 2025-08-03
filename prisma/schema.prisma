@@ -1,0 +1,93 @@
+// The following commands are not present in the schema.prisma file and cannot be removed:
+// npx prisma migrate deploy
+// npx prisma generate
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id
+  clerkId      String   @unique @map("clerk_id")
+  username     String   @unique
+  email        String
+  totalScore   Int      @default(0) @map("total_score")
+  gamesPlayed  Int      @default(0) @map("games_played")
+  gamesWon     Int      @default(0) @map("games_won")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  submissions      Submission[]
+  createdQuestions Question[]        @relation("QuestionCreator")
+
+  @@map("users")
+}
+
+
+model Question {
+  id                    String   @id @default(uuid())
+  title                 String
+  description           String
+  difficulty            String   @default("medium") // easy, medium, hard
+  recommendedTimeComplexity String? @map("recommended_time_complexity")
+  testCases             Json     @map("test_cases") // Array of {input, expectedOutput, explanation?}
+  questionType          String   @default("normal") @map("question_type") // normal, debugging, puzzle
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  createdBy             String   @map("created_by")
+
+  // Relations
+  creator               User     @relation("QuestionCreator", fields: [createdBy], references: [id])
+  // rooms removed
+
+  @@map("questions")
+}
+model Submission {
+  id              String   @id
+  // roomId removed
+  userId          String   @map("user_id")
+  code            String
+  language        String   @default("javascript")
+  isCorrect       Boolean  @default(false) @map("is_correct")
+  feedback        String?  @map("feedback")
+  timeComplexity  String?  @map("time_complexity")
+  spaceComplexity String?  @map("space_complexity")
+  score           Int      @default(0)
+  executionTime   Int?     @default(0) @map("execution_time") // in milliseconds
+  memoryUsed      Int?     @default(0) @map("memory_used") // in KB
+  submittedAt     DateTime @default(now()) @map("submitted_at")
+
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("submissions")
+}
+
+model Room {
+  id           String   @id @default(uuid())
+  hostId       String
+  joinCode     String   @unique
+  status       String   @default("active") // active, finished
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  participants Json     // Array of user info
+  // Add more fields as needed (e.g., currentQuestionId, etc.)
+}
+
+model Game {
+  id           String   @id @default(uuid())
+  roomId       String
+  winnerId     String
+  winnerName   String
+  players      Json     // Array of user info
+  endedAt      DateTime @default(now())
+  // Add more fields as needed (e.g., scores, etc.)
+}
+
+
