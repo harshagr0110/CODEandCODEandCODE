@@ -1,12 +1,12 @@
-"use client";
-
 import React from "react";
 
-export default function GameResultsPage() {
+const GameResultsPage = () => {
 	return (
 		<div style={{ padding: 32 }}>
 			<h1>Game Results</h1>
-			<p>This is the results page for a game. Customize this page as needed.</p>
+			<p>This is the game results page.</p>
 		</div>
 	);
-}
+};
+
+export default GameResultsPage;

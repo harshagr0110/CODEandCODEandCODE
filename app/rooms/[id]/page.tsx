@@ -17,7 +17,7 @@ export default function RoomPage() {
   const roomId = useMemo(() => (params?.id ? String(params.id) : ""), [params])
   const router = useRouter()
 
-  const [loading, setLoading] = useState(true)
+    const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [room, setRoom] = useState<any | null>(null)
   const [user, setUser] = useState<{ id: string; username: string } | null>(null)
