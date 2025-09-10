@@ -9,84 +9,212 @@ import { Badge } from "@/components/ui/badge"
 import { useSocket } from "@/hooks/use-socket"
 import { MonacoCodeEditor } from "@/components/monaco-code-editor"
 import { Send, Loader2 } from "lucide-react"
+import { QuestionDisplay } from "./question-display"
 
 interface CodeEditorProps {
   roomId: string
   userId: string
+  question?: any
 }
 
-export function CodeEditor({ roomId, userId }: CodeEditorProps) {
-  const [code, setCode] = useState("")
+// Default code templates for each language
+const DEFAULT_CODE_TEMPLATES = {
+  javascript: `// JavaScript solution
+const input = [];
+require('readline')
+  .createInterface(process.stdin, process.stdout)
+  .on('line', line => input.push(line))
+  .on('close', () => {
+    // Your code here
+  });`,
+
+  python: `# Python solution
+import sys
+
+# Your code here`,
+
+  cpp: `#include <iostream>
+using namespace std;
+
+int main() {
+    // Your code here
+    return 0;
+}`,
+
+  java: `import java.util.*;
+
+class Solution {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        // Your code here
+        scanner.close();
+    }
+}`,
+
+  c: `#include <stdio.h>
+
+int main() {
+    // Your code here
+    return 0;
+}`
+};
+
+export function CodeEditor({ roomId, userId, question: initialQuestion }: CodeEditorProps) {
   const [language, setLanguage] = useState("javascript")
+  const [code, setCode] = useState(DEFAULT_CODE_TEMPLATES.javascript)
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [disqualified, setDisqualified] = useState(false)
   const [mode, setMode] = useState('normal')
+  const [question, setQuestion] = useState<any>(initialQuestion)
   const [recommendedTimeComplexity, setRecommendedTimeComplexity] = useState<string | null>(null)
+  const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const lastLengthRef = useRef(0)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const router = useRouter()
   const { socket, isConnected } = useSocket()
 
+  // Function to handle language changes
+  const handleLanguageChange = (newLang: keyof typeof DEFAULT_CODE_TEMPLATES) => {
+    setLanguage(newLang);
+    setCode(DEFAULT_CODE_TEMPLATES[newLang]);
+  };
+
   useEffect(() => {
-    // Fetch mode and recommended time complexity from backend (room info)
+    // Fetch room data and question if not provided
     fetch(`/api/rooms/${roomId}`)
       .then(res => res.json())
       .then(data => {
-        setMode(data.mode || 'normal')
-        if (data.question?.recommendedTimeComplexity) {
-          setRecommendedTimeComplexity(data.question.recommendedTimeComplexity)
+        setMode(data.mode || 'normal');
+        
+        // Set question data if available
+        if (data.question) {
+          setQuestion(data.question);
         }
-      })
-  }, [roomId])
-
-  useEffect(() => {
-    if (mode !== 'contwrite' || !isConnected || submitted) return
-    let started = false
-    let interval: NodeJS.Timeout | null = null
-    const startContinuousCheck = () => {
-      started = true
-      lastLengthRef.current = code.length
-      interval = setInterval(() => {
-        if (code.length > lastLengthRef.current) {
-          lastLengthRef.current = code.length
-          // Notify backend of progress (optional)
-        } else {
-          setDisqualified(true)
-          if (socket) socket.emit('disqualified', { roomId, userId })
-          // Submit a disqualified submission to the backend
-          fetch('/api/submissions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              roomId,
-              code: code.trim(),
-              language,
-              aiFeedback: 'disqualified',
-              isCorrect: false
-            })
-          })
-          if (interval) clearInterval(interval)
+        // If we have questionId but no question data, fetch it directly
+        else if (data.questionId) {
+          fetch(`/api/questions/${data.questionId}`)
+            .then(res => res.json())
+            .then(questionData => {
+              if (questionData) {
+                setQuestion(questionData);
+              }
+            });
         }
-      }, 10000)
-    }
-    // Start after 30 seconds
-    timerRef.current = setTimeout(startContinuousCheck, 30000)
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-      if (interval) clearInterval(interval)
-    }
-  }, [mode, isConnected, code.length, submitted, socket, roomId, userId, code, language])
-
+        
+        // Set up timer if we have duration information
+        if (data.startedAt && data.durationSeconds) {
+          const startTime = new Date(data.startedAt).getTime();
+          const duration = data.durationSeconds * 1000;
+          const endTime = startTime + duration;
+          
+          // Clear any existing timer
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+          }
+          
+          // Enhanced timer with auto-submission when time runs out
+          const timerInterval = setInterval(() => {
+            const now = Date.now();
+            const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+            setTimeLeft(remaining);
+            
+            // If timer reaches zero, auto-submit and end game
+            if (remaining === 0) {
+              clearInterval(timerInterval);
+              if (!submitted) {
+                // Auto-submit current code
+                handleAutoSubmit();
+              }
+            }
+          }, 1000);
+          
+          // Store the interval ID for cleanup
+          timerRef.current = timerInterval;
+        }
+      });
+  }, [roomId, initialQuestion])
+  
+  // Cleanup the timer when component unmounts
   useEffect(() => {
-    if (!socket) return
-    socket.on('disqualified', (data: any) => {
-      if (data.userId === userId) setDisqualified(true)
-    })
     return () => {
-      socket.off('disqualified')
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [])
+
+  // Simplified continuous write mode - just basic check
+  useEffect(() => {
+    if (mode !== 'contwrite' || submitted) return
+    
+    // Simple tracking of last code length
+    let lastLength = code.length;
+    
+    const interval = setInterval(() => {
+      if (code.length > lastLength) {
+        lastLength = code.length;
+      } else {
+        setDisqualified(true);
+        if (socket) {
+          socket.emit('disqualified', { roomId, userId });
+        }
+        clearInterval(interval);
+      }
+    }, 10000);
+    
+    return () => clearInterval(interval);
+  }, [mode, submitted, code.length, socket, roomId, userId])
+
+  // Handle auto-submission when timer expires
+  const handleAutoSubmit = async () => {
+    if (submitted) return;
+    
+    try {
+      setLoading(true);
+      
+      // Submit whatever code is currently in the editor
+      const response = await fetch("/api/submissions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          roomId,
+          code: code.trim() || "// Time expired - no solution submitted",
+          language,
+          questionId: question?.id,
+          timeExpired: true,
+        }),
+      });
+
+      // Emit socket events for time expired and game ended
+      if (socket && isConnected) {
+        // First notify all clients that time has expired
+        socket.emit("time-expired", { roomId });
+        
+        // Then emit code submission event 
+        socket.emit("code-submitted", { roomId, userId, timeExpired: true });
+        
+        // Finally emit game-ended event to trigger navigation to results page
+        // We use a slight delay to ensure all submissions are processed
+        setTimeout(() => {
+          socket.emit("game-ended", { roomId });
+        }, 1000);
+      }
+      
+      setSubmitted(true);
+      
+      // Navigate to results page after a slight delay
+      setTimeout(() => {
+        router.push(`/rooms/${roomId}/results`);
+      }, 1500);
+    } catch (error) {
+      // Silent fail
+    } finally {
+      setLoading(false);
     }
-  }, [socket, userId])
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -96,7 +224,7 @@ export function CodeEditor({ roomId, userId }: CodeEditorProps) {
     }
 
     setLoading(true)
-    try {
+    try {      
       const response = await fetch("/api/submissions", {
         method: "POST",
         headers: {
@@ -106,36 +234,21 @@ export function CodeEditor({ roomId, userId }: CodeEditorProps) {
           roomId,
           code: code.trim(),
           language,
+          questionId: question?.id,
         }),
       })
 
       const data = await response.json()
 
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to submit code")
-      }
-
-      // Emit socket event for real-time updates
+      // Emit socket event
       if (socket && isConnected) {
-        socket.emit("code-submitted", {
-          roomId,
-          userId,
-          result: data,
-        })
+        socket.emit("code-submitted", { roomId, userId });
       }
-
-      // Show feedback
-      alert(data.isCorrect ? "Correct Solution! 🎉" : "Solution Submitted")
 
       setSubmitted(true)
-
-      // Refresh page to show updated leaderboard
-      setTimeout(() => {
-        router.refresh()
-      }, 2000)
+      router.refresh()
     } catch (error) {
-      alert("Submission Error")
-      console.error(error instanceof Error ? error.message : "Failed to submit")
+      // Silent fail
     } finally {
       setLoading(false)
     }
@@ -164,44 +277,61 @@ export function CodeEditor({ roomId, userId }: CodeEditorProps) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Your Solution</CardTitle>
-        {recommendedTimeComplexity && (
-          <div className="mt-2 text-sm text-blue-700">
-            <b>Required Time Complexity:</b> {recommendedTimeComplexity}
-          </div>
-        )}
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="flex items-center space-x-4">
-            <label className="text-sm font-medium">Language:</label>
-            <select 
-              value={language} 
-              onChange={(e) => setLanguage(e.target.value)}
-              className="border rounded px-3 py-1"
-            >
-              <option value="javascript">JavaScript</option>
-              <option value="python">Python</option>
-              <option value="cpp">C++</option>
-              <option value="java">Java</option>
-              <option value="c">C</option>
-            </select>
-          </div>
+    <div className="space-y-6">
+      {/* Display the question */}
+      <QuestionDisplay question={question} timeLeft={timeLeft} />
+      
+      <Card>
+        <CardHeader>
+          <CardTitle>Your Solution</CardTitle>
+          {timeLeft !== null && (
+            <div className="text-sm font-medium text-amber-600">
+              Time Left: {Math.floor(timeLeft / 60)}m {timeLeft % 60}s
+            </div>
+          )}
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="flex items-center space-x-4">
+              <label className="text-sm font-medium">Language:</label>
+              <select 
+                value={language} 
+                onChange={(e) => {
+                  const newLang = e.target.value as keyof typeof DEFAULT_CODE_TEMPLATES;
+                  handleLanguageChange(newLang);
+                }}
+                className="border rounded px-3 py-1"
+              >
+                <option value="javascript">JavaScript</option>
+                <option value="python">Python</option>
+                <option value="cpp">C++</option>
+                <option value="java">Java</option>
+                <option value="c">C</option>
+              </select>
+            </div>
 
-          <MonacoCodeEditor
-            value={code}
-            onChange={setCode}
-            language={language}
-            height="400px"
-          />
+            <MonacoCodeEditor
+              value={code}
+              onChange={setCode}
+              language={language}
+              height="400px"
+            />
 
-          <Button type="submit" disabled={loading || !code.trim()} className="w-full" size="lg">
+          <Button 
+            type="submit" 
+            disabled={loading || !code.trim() || timeLeft === 0} 
+            className="w-full" 
+            size="lg"
+          >
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 Submitting...
+              </>
+            ) : timeLeft === 0 ? (
+              <>
+                <Send className="h-4 w-4 mr-2" />
+                Time's Up!
               </>
             ) : (
               <>
@@ -217,5 +347,6 @@ export function CodeEditor({ roomId, userId }: CodeEditorProps) {
         )}
       </CardContent>
     </Card>
+    </div>
   )
 }

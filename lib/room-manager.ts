@@ -1,6 +1,6 @@
 // In-memory room manager for team mode
 
-export type RoomMode = "normal" | "shortest" | "debugging" | "escape";
+export type RoomMode = "normal" | "shortest";
 
 export interface Room {
   id: string;

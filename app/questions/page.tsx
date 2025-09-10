@@ -68,7 +68,6 @@ export default function QuestionsPage() {
   const getTypeColor = (type: string) => {
     switch (type) {
       case 'normal': return 'bg-blue-100 text-blue-800'
-      case 'debugging': return 'bg-purple-100 text-purple-800'
       case 'puzzle': return 'bg-orange-100 text-orange-800'
       default: return 'bg-gray-100 text-gray-800'
     }
@@ -123,7 +122,6 @@ export default function QuestionsPage() {
                 >
                   <option value="">All Types</option>
                   <option value="normal">Normal</option>
-                  <option value="debugging">Debugging</option>
                   <option value="puzzle">Puzzle</option>
                 </select>
 

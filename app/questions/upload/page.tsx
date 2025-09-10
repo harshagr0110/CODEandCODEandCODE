@@ -205,7 +205,6 @@ export default function UploadQuestionPage() {
                         required
                       >
                         <option value="normal">Normal</option>
-                        <option value="debugging">Debugging</option>
                         <option value="puzzle">Puzzle</option>
                       </select>
                     </div>

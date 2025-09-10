@@ -2,51 +2,97 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getRoom } from "@/lib/room-manager"
 import { executeCode } from "@/lib/piston"
-import io from 'socket.io-client'
+import { prisma } from "@/lib/prisma"
+import * as socketClient from 'socket.io-client'
 
-const socket = io(process.env.NEXT_PUBLIC_SOCKET_IO_URL || 'http://localhost:3001')
+const socket = socketClient.connect('http://localhost:3001')
 
 export async function POST(request: NextRequest) {
   try {
     const user = await getCurrentUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    const { roomId, code, language = "javascript", feedback, isCorrect } = await request.json()
+    const { roomId, code, language = "javascript", feedback, isCorrect, questionId } = await request.json()
     if (!roomId || !code) return NextResponse.json({ error: "Room ID and code are required" }, { status: 400 })
 
-    const room = getRoom(roomId)
-    if (!room || room.status !== "in_progress")
+    // Get room from memory or database
+    let room = getRoom(roomId)
+    
+    if (!room) {
+      const dbRoom = await prisma.room.findUnique({ 
+        where: { id: roomId }
+      });
+      
+      if (dbRoom && dbRoom.status === "in_progress") {
+        room = dbRoom as any;
+        if (room) {
+          room.submissions = [];
+        }
+      }
+    }
+    
+    if (!room || room.status !== "in_progress") {
       return NextResponse.json({ error: "Room not found or game not active" }, { status: 400 })
+    }
+    
     if (!room.submissions) room.submissions = []
+    
     const existingSubmission = room.submissions.find((sub: any) => sub.userId === user.id)
-    if (existingSubmission)
+    if (existingSubmission) {
       return NextResponse.json({ error: "You have already submitted a solution" }, { status: 400 })
-    if (!room.question) {
+    }
+    
+    // Try to get question from room or fetch directly by questionId
+    let question = room.question;
+    if (!question && questionId) {
+      question = await prisma.question.findUnique({
+        where: { id: questionId }
+      });
+    }
+    
+    if (!question) {
       return NextResponse.json({ error: "No question associated with this room" }, { status: 400 })
     }
 
-    let evaluation
+    let evaluation = {
+      isCorrect: false,
+      feedback: "",
+      executionTime: 0,
+      testResults: []
+    };
+    
     if (feedback === 'disqualified') {
       evaluation = {
         isCorrect: false,
         feedback: 'disqualified',
         executionTime: 0,
-        memoryUsed: 0,
         testResults: [],
       }
     } else {
-      // Ensure testCases is properly parsed from JSON if needed
-      const testCases = Array.isArray(room.question.testCases) 
-        ? room.question.testCases 
-        : JSON.parse(room.question.testCases as string)
-      
-      evaluation = await executeCode(code, language, testCases).catch(() => ({
-        isCorrect: false,
-        feedback: "Code execution failed. Please try again.",
-        executionTime: 0,
-        memoryUsed: 0,
-        testResults: [],
-      }))
+      try {
+        // Parse test cases
+        let testCases = question.testCases;
+        if (typeof testCases === 'string') {
+          testCases = JSON.parse(testCases);
+        }
+        
+        // Execute code against test cases
+        const result = await executeCode(code, language, testCases);
+        
+        evaluation = {
+          isCorrect: result.isCorrect || false,
+          feedback: result.feedback || "Code submitted",
+          executionTime: result.executionTime || 0,
+          testResults: [],
+        };
+      } catch (error) {
+        evaluation = {
+          isCorrect: false,
+          feedback: "Code execution failed",
+          executionTime: 0,
+          testResults: [],
+        };
+      }
     }
 
     // Calculate score based on correctness and execution time
@@ -69,7 +115,6 @@ export async function POST(request: NextRequest) {
       isCorrect: evaluation.isCorrect,
       feedback: evaluation.feedback,
       executionTime: evaluation.executionTime,
-      memoryUsed: evaluation.memoryUsed,
       score: score,
     }
     room.submissions.push(submission)
@@ -111,9 +156,8 @@ export async function POST(request: NextRequest) {
           newSubmission: { userId: user.id, result: evaluation, timestamp: new Date() },
         })
       }
-    } else if (mode === 'debugging') {
-      // Debugging mode: all players get a buggy code, must fix it
-      // Mark as finished when all have submitted, winner is first correct or all correct
+    } else {
+      // Default case for any other mode
       if (submissionCount === allUserIds.length) {
         const correctSubs = room.submissions.filter((s: any) => s.isCorrect)
         let winnerId = null
@@ -130,27 +174,13 @@ export async function POST(request: NextRequest) {
           newSubmission: { userId: user.id, result: evaluation, timestamp: new Date() },
         })
       }
-    } else if (mode === 'escape') {
-      // Escape the Room: multi-stage challenge
-      // Stage logic should be handled in gameData, here we just check for completion
-      // For now, mark as finished when all have completed all stages (stub)
-      if (submissionCount === allUserIds.length) {
-        room.status = "finished"
-        room.endedAt = new Date()
-        // Optionally, determine winner based on gameData
-        socket.emit('game-ended', { roomId, gameId: roomId })
-      } else {
-        socket.emit('submission-update', {
-          newSubmission: { userId: user.id, result: evaluation, timestamp: new Date() },
-        })
-      }
     }
 
     return NextResponse.json({
       message: "Submission evaluated successfully",
       submission,
     })
-  }catch (error) {
+  } catch (error) {
     console.error("Error executing code:", error);
     return NextResponse.json(
       { 

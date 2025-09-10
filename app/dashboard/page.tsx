@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Trophy, Users, Clock, Target } from "lucide-react"
 import Link from "next/link"
 import { MainLayout } from "@/components/main-layout"
-import { DeleteRoomCardButton } from "../rooms/delete-room-card-button"
+import { RoomActions } from "../rooms/[id]/room-actions"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Suspense } from "react"
 import { JoinByCode } from "../rooms/join-by-code"
@@ -190,10 +190,11 @@ export default async function DashboardPage() {
                               <Link href={`/rooms/${room.id}`}>
                                 <Button size="sm" variant="outline">View</Button>
                               </Link>
-                              <DeleteRoomCardButton
+                              <RoomActions
                                 roomId={room.id}
-                                roomName={room.name}
-                                isCreator={true}
+                                isHost={true}
+                                inRoom={false}
+                                size="sm"
                               />
                             </div>
                           </div>

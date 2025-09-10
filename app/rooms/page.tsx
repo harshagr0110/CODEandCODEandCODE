@@ -10,7 +10,7 @@ import { Users, Lock, Clock, Hash } from "lucide-react"
 import Link from "next/link"
 import { MainLayout } from "@/components/main-layout"
 import { JoinByCode } from "./join-by-code"
-import { DeleteRoomCardButton } from "./delete-room-card-button"
+import { RoomActions } from "./[id]/room-actions"
 
 export default function RoomsPage() {
   const [activeRooms, setActiveRooms] = useState<any[]>([])

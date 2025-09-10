@@ -3,23 +3,42 @@ import { getCurrentUser } from "@/lib/auth"
 
 import { prisma } from "@/lib/prisma"
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     const user = await getCurrentUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    const roomId = params.id
+    const { id: roomId } = await context.params;
     const room = await prisma.room.findUnique({ where: { id: roomId } })
     if (!room) return NextResponse.json({ error: "Room not found" }, { status: 404 })
-    let participants = JSON.parse(room.participants)
+    let participants: any[] = [];
+    if (Array.isArray(room.participants)) {
+      participants = room.participants as any[];
+    } else if (typeof room.participants === 'string') {
+      try {
+        participants = JSON.parse(room.participants);
+      } catch {
+        participants = [];
+      }
+    }
     const isHost = room.hostId === user.id
     if (isHost) {
       // Save game result before deleting room (if needed)
+      let players: any[] = [];
+      if (Array.isArray(room.participants)) {
+        players = room.participants as any[];
+      } else if (typeof room.participants === 'string') {
+        try {
+          players = JSON.parse(room.participants);
+        } catch {
+          players = [];
+        }
+      }
       await prisma.game.create({
         data: {
           roomId: room.id,
           winnerId: user.id,
           winnerName: user.username,
-          players: room.participants,
+          players: players,
         },
       })
       await prisma.room.delete({ where: { id: roomId } })

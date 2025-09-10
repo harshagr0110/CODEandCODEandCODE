@@ -20,28 +20,13 @@ export function RoomClient({ roomId, userId, initialJoined }: RoomClientProps) {
 
   const handleJoinRoom = async () => {
     setLoading(true)
-    try {
-      const response = await fetch(`/api/rooms/${roomId}/join`, {
-        method: "POST",
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Failed to join room")
-      }
-
+    const response = await fetch(`/api/rooms/${roomId}/join`, { method: "POST" })
+    if (response.ok) {
       setHasJoined(true)
-      // Emit join-room event via socket for real-time update
-      if (socket && isConnected) {
-        socket.emit("join-room", { roomId, userId })
-      }
-      // Refresh the page to show updated player list
+      if (socket && isConnected) socket.emit("join-room", { roomId, userId })
       router.refresh()
-    } catch (error) {
-      console.error("Error joining room:", error instanceof Error ? error.message : "Failed to join room")
-    } finally {
-      setLoading(false)
     }
+    setLoading(false)
   }
 
   if (!hasJoined) {

@@ -61,38 +61,22 @@ function sanitizeInput(input: string): string {
 
 // Better C++ code wrapper
 function wrapCppCode(code: string): string {
-  const includes = `#include <iostream>
+  // Don't modify the code if it has main function defined
+  if (code.includes('main()') || code.includes('main(')) {
+    return code;
+  }
+  
+  // Simple wrapper for code fragments
+  return `#include <iostream>
 #include <vector>
 #include <string>
 #include <algorithm>
 using namespace std;
 
-`
-  
-  if (!code.includes('#include')) {
-    code = includes + code
-  }
-  
-  if (!code.includes('int main()')) {
-    code = code.replace('main()', 'int main()')
-  }
-  
-  // Add error handling
-  if (code.includes('vector') && !code.includes('try')) {
-    code = code.replace('int main() {', `int main() {
-    try {
-`)
-    code = code.replace('return 0;', `        return 0;
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return 1;
-    } catch (...) {
-        std::cerr << "Unknown error occurred" << std::endl;
-        return 1;
-    }`)
-  }
-  
-  return code
+int main() {
+    ${code}
+    return 0;
+}`;
 }
 
 // Better error message handling
@@ -143,7 +127,7 @@ async function submitCode(code: string, languageId: number, input: string): Prom
     source_code: code,
     language_id: languageId,
     stdin: input,
-    cpu_time_limit: 15,
+    cpu_time_limit: 20, // Reduced to 20 seconds to comply with Judge0 API
     memory_limit: 512000,
   }
 
@@ -154,6 +138,8 @@ async function submitCode(code: string, languageId: number, input: string): Prom
     hasApiKey: !!apiKey
   })
 
+  console.log('📝 Judge0 submission payload:', submission);
+  
   const response = await fetch(`${JUDGE0_API_URL}/submissions`, {
     method: 'POST',
     headers: {
@@ -177,8 +163,16 @@ async function submitCode(code: string, languageId: number, input: string): Prom
   if (response.status === 401) {
     throw new Error('Unauthorized. Please check your RapidAPI key configuration.')
   }
+  
+  if (response.status === 422) {
+    const errorBody = await response.text();
+    console.error('Judge0 validation error:', errorBody);
+    throw new Error(`Judge0 API validation error (422): ${errorBody.substring(0, 200)}...`);
+  }
 
   if (!response.ok) {
+    const errorBody = await response.text();
+    console.error('Judge0 error body:', errorBody);
     throw new Error(`Judge0 API error: ${response.status} - ${response.statusText}`)
   }
 
@@ -216,7 +210,7 @@ async function getResults(token: string): Promise<Judge0Result> {
 }
 
 // Wait for results with polling
-async function waitForResults(token: string, maxAttempts: 30): Promise<Judge0Result> {
+async function waitForResults(token: string, maxAttempts: number = 30): Promise<Judge0Result> {
   for (let i = 0; i < maxAttempts; i++) {
     const result = await getResults(token)
     
@@ -237,7 +231,7 @@ async function waitForResults(token: string, maxAttempts: 30): Promise<Judge0Res
     await new Promise(resolve => setTimeout(resolve, 1000))
   }
   
-  throw new Error('Execution timeout - Judge0 took too long to process the submission')
+  throw new Error('Execution timeout - Judge0 took too long to process the submission. Possible causes: Judge0 API is slow, quota exceeded, or code is taking too long. Check your RapidAPI quota and try again.')
 }
 
 export async function executeCode(
@@ -277,7 +271,7 @@ export async function executeCode(
       const token = await submitCode(executionCode, langConfig.id, cleanInput)
       
       // Wait for results
-      const result = await waitForResults(token)
+  const result = await waitForResults(token, 60)
       
       const endTime = Date.now()
       totalExecutionTime += (endTime - startTime)

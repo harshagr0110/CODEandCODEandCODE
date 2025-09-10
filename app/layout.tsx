@@ -1,7 +1,6 @@
 import type React from "react"
 import { ClerkProvider } from "@clerk/nextjs"
 import { Inter } from "next/font/google"
-import { ThemeProvider } from "@/components/theme-provider"
 import "./globals.css"
 import { Metadata } from "next"
 
@@ -42,16 +41,9 @@ export default function RootLayout({
         },
       }}
     >
-      <html lang="en" suppressHydrationWarning>
+      <html lang="en">
         <body className={inter.className}>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="light"
-            enableSystem
-            disableTransitionOnChange
-          >
-            {children}
-          </ThemeProvider>
+          {children}
         </body>
       </html>
     </ClerkProvider>

@@ -11,47 +11,22 @@ import { Label } from "@/components/ui/label"
 
 export function JoinByCode() {
   const [joinCode, setJoinCode] = useState("")
-  const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
 
   const handleJoinByCode = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!joinCode.trim()) return
-
     setLoading(true)
-    try {
-      const response = await fetch("/api/rooms/join-by-code", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          joinCode: joinCode.trim().toUpperCase(),
-          password: password.trim(),
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        if (response.status === 401 && data.error === "Invalid password") {
-          setShowPassword(true)
-          window.alert("This is a private room. Please enter the password.")
-          return
-        }
-        throw new Error(data.error || "Failed to join room")
-      }
-
-      window.alert("Joining room...")
-
-      router.push(`/rooms/${data.roomId}`)
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : "Failed to join room")
-    } finally {
-      setLoading(false)
-    }
+    const response = await fetch("/api/rooms/join-by-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ joinCode: joinCode.trim().toUpperCase() })
+    })
+    const data = await response.json()
+    if (!response.ok) return setLoading(false)
+    router.push(`/rooms/${data.roomId}`)
+    setLoading(false)
   }
 
   return (
@@ -67,27 +42,14 @@ export function JoinByCode() {
             <Input
               id="joinCode"
               value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-              placeholder="Enter 6-character code"
+              onChange={(e) => setJoinCode(e.target.value)}
+              placeholder="ABC123"
+              autoComplete="off"
               maxLength={6}
-              className="text-center text-lg font-mono tracking-wider"
+              required
             />
           </div>
-
-          {showPassword && (
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter room password"
-              />
-            </div>
-          )}
-
-          <Button type="submit" disabled={!joinCode.trim() || loading} className="w-full">
+          <Button type="submit" disabled={loading} className="w-full">
             {loading ? "Joining..." : "Join Room"}
           </Button>
         </form>
